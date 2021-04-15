@@ -1,0 +1,304 @@
+SELECT USER
+FROM DUAL;
+--==>> SCOTT
+
+-- 로그인 프로시저(관리자)
+CREATE OR REPLACE PROCEDURE PRC_LOGIN_ADMIN
+( V_ADMIN_CODE  IN TBL_ADMIN.ADMIN_CODE%TYPE
+, V_ADMIN_PW    IN TBL_ADMIN.ADMIN_PW%TYPE
+)
+IS
+    -- 변수선언
+    V_ORI_ADMIN_PW  TBL_ADMIN.ADMIN_PW%TYPE;    --입력받은 ADMIN_CODE에 해당하는 유효한 PW.
+    
+    USER_DEFINE_ERROR   EXCEPTION;
+    
+BEGIN
+    SELECT ADMIN_PW INTO V_ORI_ADMIN_PW
+    FROM TBL_ADMIN
+    WHERE ADMIN_CODE = V_ADMIN_CODE;
+    
+    
+    IF ( V_ORI_ADMIN_PW != V_ADMIN_PW )
+        THEN RAISE USER_DEFINE_ERROR;
+    ELSE
+        DBMS_OUTPUT.PUT_LINE('관리자 페이지로 로그인되었습니다.');
+    END IF;
+       
+    
+    EXCEPTION
+        WHEN USER_DEFINE_ERROR
+            THEN RAISE_APPLICATION_ERROR(-20100, '아이디 또는 패스워드를 잘못 입력하였습니다.');
+            ROLLBACK;
+        WHEN OTHERS
+            THEN RAISE_APPLICATION_ERROR(-20100, '아이디 또는 패스워드를 잘못 입력하였습니다.');
+            ROLLBACK;
+    
+    --커밋
+    --COMMIT;
+    
+END;
+
+
+-- 로그인 프로시저 (교수)
+CREATE OR REPLACE PROCEDURE PRC_LOGIN_PROFESSOR
+( V_PROF_CODE   IN TBL_PROFESSOR.PROF_CODE%TYPE
+, V_PROF_PW     IN TBL_PROFESSOR.PROF_PW%TYPE
+)
+IS
+    --변수선언
+    V_ORI_PROF_PW   TBL_PROFESSOR.PROF_PW%TYPE;    --입력받은 PROF_CODE에 해당하는 유효한 PW.
+    
+    USER_DEFINE_ERROR   EXCEPTION;
+    
+BEGIN
+    SELECT PROF_PW INTO V_ORI_PROF_PW
+    FROM TBL_PROFESSOR
+    WHERE PROF_CODE = V_PROF_CODE;
+
+    IF ( V_ORI_PROF_PW != V_PROF_PW )
+        THEN RAISE USER_DEFINE_ERROR;
+    END IF;
+    
+    DBMS_OUTPUT.PUT_LINE('교수 페이지로 로그인되었습니다.');
+    
+    EXCEPTION
+        WHEN USER_DEFINE_ERROR
+            THEN RAISE_APPLICATION_ERROR(-20100, '아이디 또는 패스워드를 잘못 입력하였습니다.');
+            ROLLBACK;
+        WHEN OTHERS
+            THEN RAISE_APPLICATION_ERROR(-20100, '아이디 또는 패스워드를 잘못 입력하였습니다.');
+            ROLLBACK;
+    
+    --커밋
+    --COMMIT;
+    
+END;
+
+
+-- 로그인 프로시저 (학생)
+CREATE OR REPLACE PROCEDURE PRC_LOGIN_STUDENT
+( V_STD_CODE    IN TBL_STUDENT.STD_CODE%TYPE
+, V_STD_PW      IN TBL_STUDENT.STD_PW%TYPE
+)
+IS
+    --변수선언
+    V_ORI_STD_PW    TBL_STUDENT.STD_PW%TYPE;    --입력받은 STD_CODE에 해당하는 유효한 PW.
+    
+    USER_DEFINE_ERROR   EXCEPTION;
+    
+BEGIN
+    SELECT STD_PW INTO V_ORI_STD_PW
+    FROM TBL_STUDENT
+    WHERE STD_CODE = V_STD_CODE;
+    
+    IF ( V_ORI_STD_PW != V_STD_PW )
+        THEN RAISE USER_DEFINE_ERROR;
+    END IF;
+    
+    DBMS_OUTPUT.PUT_LINE('학생 페이지로 로그인되었습니다.');
+    
+    EXCEPTION
+        WHEN USER_DEFINE_ERROR
+            THEN RAISE_APPLICATION_ERROR(-20100, '아이디 또는 패스워드를 잘못 입력하였습니다.');
+            ROLLBACK;   
+        WHEN OTHERS
+            THEN RAISE_APPLICATION_ERROR(-20100, '아이디 또는 패스워드를 잘못 입력하였습니다.');
+            ROLLBACK;
+    
+    --커밋
+    --COMMIT;
+    
+END;
+
+
+
+-- 과정개설코드 SEQUENCE
+CREATE SEQUENCE SEQ_OPENC
+START WITH 10000
+INCREMENT BY 1
+MAXVALUE 19999
+NOCACHE;
+
+
+-- ①과정개설 프로시저 입력 PRC_OPENC_INSERT
+-- 과정시작일자가 SYSDATE < 과정시작일자 조건 → TRIGGER
+-- 한 강의실에 과정기간 겹치면 안됨
+CREATE OR REPLACE PROCEDURE PRC_OPENC_INSERT
+( V_CRS_CODE    IN TBL_COURSE.CRS_CODE%TYPE
+, V_ROOM_CODE   IN TBL_ROOM.ROOM_CODE%TYPE
+, V_CRS_START   IN TBL_OPENC.CRS_START%TYPE
+, V_CRS_END     IN TBL_OPENC.CRS_END%TYPE
+)
+IS
+    V_OPENC_CODE        TBL_OPENC.OPENC_CODE%TYPE;
+    --V_CRS_START_TEMP    TBL_OPENC.CRS_START%TYPE;
+    V_CRS_END_TEMP      TBL_OPENC.CRS_END%TYPE;
+    USER_DEFINE_ERROR1  EXCEPTION;
+    USER_DEFINE_ERROR2  EXCEPTION;
+    
+    
+    -- CURSOR의 선언
+    CURSOR CUR_ROOM_CHECK
+    IS
+    SELECT CRS_END
+    FROM TBL_OPENC
+    WHERE ROOM_CODE = V_ROOM_CODE;
+    
+BEGIN
+    -- CURSOR 열기
+     OPEN CUR_ROOM_CHECK;
+    
+     LOOP
+         FETCH CUR_ROOM_CHECK INTO V_CRS_END_TEMP;
+         
+         EXIT WHEN CUR_ROOM_CHECK%NOTFOUND;
+         
+         IF (V_CRS_START <= V_CRS_END_TEMP) --이건가..?
+         --기존 강좌종료일자보다 내가 등록할 강좌시작일자가 과거라면
+            THEN RAISE USER_DEFINE_ERROR2;
+         END IF;
+         
+     END LOOP;
+     
+     CLOSE CUR_ROOM_CHECK;
+
+    -- 과정시작일자가 SYSDATE보다 미래이게 
+     IF (SYSDATE >= V_CRS_START)
+        THEN RAISE USER_DEFINE_ERROR1;
+     END IF;
+    
+    -- V_OPENC_CODE 변수 초기화
+    V_OPENC_CODE := TO_CHAR(SEQ_OPENC.NEXTVAL);
+    
+    INSERT INTO TBL_OPENC(OPENC_CODE, CRS_CODE, ROOM_CODE, CRS_START, CRS_END)
+    VALUES (V_OPENC_CODE, V_CRS_CODE, V_ROOM_CODE, V_CRS_START, V_CRS_END);
+    
+    EXCEPTION
+        WHEN USER_DEFINE_ERROR1
+            THEN RAISE_APPLICATION_ERROR(-20002, '과정시작일자가 오늘날짜보다 이전입니다.');
+            ROLLBACK;
+        WHEN USER_DEFINE_ERROR2
+            THEN RAISE_APPLICATION_ERROR(-20003, '현재 강의 진행중인 과정의 강의실입니다.');
+            ROLLBACK;
+        
+    -- 커밋
+    --COMMIT;
+    
+END;
+
+
+-- 과정개설 프로시저 수정 PRC_OPENC_UPDATE(과정개설코드, 강의실코드, 과정시작일자, 과정종료일자 수정)
+CREATE OR REPLACE PROCEDURE PRC_OPENC_UPDATE
+( V_OPENC_CODE  IN TBL_OPENC.OPENC_CODE%TYPE
+, V_ROOM_CODE   IN TBL_ROOM.ROOM_CODE%TYPE
+, V_CRS_START     IN TBL_OPENC.CRS_START%TYPE
+, V_CRS_END       IN TBL_OPENC.CRS_END%TYPE
+)
+IS  
+    V_OPENC_CODE    TBL_OPENC.OPENC_CODE%TYPE;
+    V_CRS_END_TEMP  TBL_OPENC.CRS_END%TYPE;
+    
+    USER_DEFINE_ERROR1  EXCEPTION;
+    
+    --커서 선언
+    CURSOR CUR_ROOM_CHE
+    IS
+    SELECT CRS_END
+    FROM TBL_OPENC
+    WHERE ROOM_CODE = V_ROOM_CODE;
+    
+BEGIN
+    -- 커서 열기
+    OPEN CUR_ROOM_CHE;
+    
+    LOOP
+        FETCH CUR_ROOM_CHE INTO V_CRS_END_TEMP;
+        
+        EXIT WHEN CUR_ROOM_CHE%NOTFOUND;
+        
+        IF (V_CRS_START <= V_CRS_END_TEMP)
+            THEN RAISE USER_DEFINE_ERROR;
+        END IF;
+        
+    END LOOP;
+    
+    -- 커서 닫기
+    CLOSE CUR_ROOM_CHE;
+
+    -- UPDATE 쿼리문
+    UPDATE TBL_OPENC
+    SET ROOM_CODE = V_ROOM_CODE, CRS_START = V_CRS_START, CRS_END = V_CRS_END
+    WHERE OPENC_CODE = V_OPENC_CODE;
+    
+    EXCEPTION
+        WHEN USER_DEFINE_ERROR
+            THEN RAISE_APPLICATION_ERROR(-20004, '현재 강의 진행중인 과정의 강의실입니다.');
+            ROLLBACK;
+    
+    --커밋
+    --COMMIT;
+END;
+
+
+-- 과정개설 프로시저 삭제 PRC_OPENC_DELETE(코드 삭제하면 다 삭제되나요..?)
+CREATE OR REPLACE PROCEDURE PRC_OPENC_UPDATE
+( V_OPENC_CODE  IN TBL_OPENC.OPENC_CODE%TYPE
+)
+IS
+BEGIN
+    
+    -- DELETE 쿼리문
+    DELETE
+    FROM TBL_OPENC
+    WHERE OPENC_CODE = V_OPENC_CODE;
+    
+    --커밋
+    --COMMIT;
+    
+END;
+
+
+--뷰 만들목록
+--교수뷰, 학생정보뷰, 과정참여 학생뷰, 관리자뷰
+
+
+
+-- ① 교수자 계정 관리 기능 구현한 뷰 
+-- 교수명, 배정된과목명, 기간, 교재명, 강의실, 강의진행여부 조회 
+CREATE OR REPLACE VIEW VIEW_PROFESSORS
+AS
+SELECT P.PROF_NAME "교수명", S.SUB_NAME "과목명", OS.SUB_START "과목시작일", OS.SUB_END "과목종료일"
+     , B.BOOK_NAME"교재명", R.ROOM_NAME"강의실"
+     , (CASE WHEN SYSDATE BETWEEN OS.SUB_START AND OS.SUB_END
+             THEN '강의진행중' ELSE '강의준비중' END) "강의진행여부"
+FROM PROFESSOR P, SUBJECT S, OPENS OS, BOOK B, ROOM R, OPENC OC
+WHERE P.PROF_CODE = OS.PROF_CODE
+  AND S.SUB_CODE = OS.SUB_CODE
+  AND B.BOOK_CODE = OS.BOOK_CODE
+  AND OC.OPENC_CODE = OS.OPENC_CODE
+  AND R.ROOM_CODE = OC.ROOM_CODE;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
