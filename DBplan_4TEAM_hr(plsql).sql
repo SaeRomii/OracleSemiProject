@@ -79,6 +79,7 @@ NOCACHE;
 
 ---------------------------------시퀀스 생성 끝----------------------------------
 
+
 -------------------------------0. 로그인 프로시저--------------------------------
 
 -- 로그인 프로시저(관리자) PRC_LOGIN_ADMIN(ADMIN_CODE,ADMIN_PW)
@@ -111,11 +112,10 @@ BEGIN
             THEN RAISE_APPLICATION_ERROR(-20100, '아이디 또는 패스워드를 잘못 입력하였습니다.');
             ROLLBACK;
         WHEN OTHERS
-            THEN RAISE_APPLICATION_ERROR(-20100, '아이디 또는 패스워드를 잘못 입력하였습니다.');
-            ROLLBACK;
+            THEN ROLLBACK;
     
     --커밋
-    --COMMIT;
+    COMMIT;
     
 END;
 --==>> Procedure PRC_LOGIN_ADMIN이(가) 컴파일되었습니다.
@@ -147,11 +147,10 @@ BEGIN
             THEN RAISE_APPLICATION_ERROR(-20100, '아이디 또는 패스워드를 잘못 입력하였습니다.');
             ROLLBACK;
         WHEN OTHERS
-            THEN RAISE_APPLICATION_ERROR(-20100, '아이디 또는 패스워드를 잘못 입력하였습니다.');
-            ROLLBACK;
+            THEN ROLLBACK;
     
     --커밋
-    --COMMIT;
+    COMMIT;
     
 END;
 --==>> Procedure PRC_LOGIN_PROFESSOR이(가) 컴파일되었습니다.
@@ -183,11 +182,10 @@ BEGIN
             THEN RAISE_APPLICATION_ERROR(-20100, '아이디 또는 패스워드를 잘못 입력하였습니다.');
             ROLLBACK;   
         WHEN OTHERS
-            THEN RAISE_APPLICATION_ERROR(-20100, '아이디 또는 패스워드를 잘못 입력하였습니다.');
-            ROLLBACK;
+            THEN ROLLBACK;
     
     --커밋
-    --COMMIT;
+    COMMIT;
     
 END;
 --==>> Procedure PRC_LOGIN_STUDENT이(가) 컴파일되었습니다.
@@ -203,84 +201,111 @@ CREATE OR REPLACE PROCEDURE PRC_PROFESSOR_INSERT
 )
 IS
     V_PROF_CODE   TBL_PROFESSOR.PROF_CODE%TYPE;             -- 코드
-
 BEGIN
     -- 교수 코드(시퀀스)
-    V_PROF_CODE := CONCAT('P' , TO_CHAR(SEQ_PROFESSOR.NEXTVAL));   
+    V_PROF_CODE := 'P' || TO_CHAR(SYSDATE,'YYYY') || TO_CHAR(SEQ_PROFESSOR.NEXTVAL);           
+    
     
     -- INSERT 쿼리문
     INSERT INTO TBL_PROFESSOR(PROF_CODE, PROF_NAME, PROF_SSN, PROF_PW)
     VALUES(V_PROF_CODE, V_PROF_NAME, V_PROF_SSN, V_PROF_SSN);
     
     -- 커밋
-    -- COMMIT;
-    
-    --예외 처리
-      EXCEPTION
-        WHEN OTHERS 
-            THEN ROLLBACK;
+    COMMIT;
     
 END;
 --==>> Procedure PRC_PROFESSOR_INSERT이(가) 컴파일되었습니다
 
-
--- 교수 UPDATE 프로시저 PRC_PROFESSOR_UPDATE(코드, 바꿀이름, 주민번호, 바꿀PW)
-CREATE OR REPLACE PROCEDURE PRC_PROFESSOR_UPDATE
+-- (관리자 입장)교수 UPDATE 프로시저 PRC_AD_PROFESSOR_UPDATE(코드, NEW이름, NEW주민번호)
+CREATE OR REPLACE PROCEDURE PRC_AD_PROFESSOR_UPDATE
 (
      V_PROF_CODE    IN TBL_PROFESSOR.PROF_CODE%TYPE 
-    ,V_PROF_NAME    IN TBL_PROFESSOR.PROF_NAME%TYPE     -- 바꿀이름
-    ,V_PROF_SSN     IN TBL_PROFESSOR.PROF_SSN%TYPE 
-    ,V_PROF_PW      IN TBL_PROFESSOR.PROF_PW%TYPE       -- 바꿀PW
+    ,V_PROF_NAME    IN TBL_PROFESSOR.PROF_NAME%TYPE     -- NEW 이름
+    ,V_PROF_SSN     IN TBL_PROFESSOR.PROF_SSN%TYPE      -- NEW 주민번호
 )
-IS
-    
+IS   
+    V_PROF_CODE_TEMP    TBL_PROFESSOR.PROF_CODE%TYPE;
+
 BEGIN
-    -- 코드, 주민번호 비교 → NAME, PW 변경
+
     UPDATE TBL_PROFESSOR
-    SET PROF_NAME = V_PROF_NAME, PROF_PW = V_PROF_PW 
-    WHERE PROF_CODE = V_PROF_CODE AND (SELECT PROF_SSN
-                                       FROM TBL_PROFESSOR
-                                       WHERE PROF_CODE=V_PROF_CODE)=V_PROF_SSN;
+    SET PROF_NAME = V_PROF_NAME, PROF_SSN = V_PROF_SSN
+    WHERE PROF_CODE = V_PROF_CODE;
+
+    DBMS_OUTPUT.PUT_LINE('변경사항이 성공적으로 반영되었습니다.');
     
     --커밋
-    --COMMIT;
+    COMMIT;  
+    
+    EXCEPTION
+        WHEN OTHERS
+            THEN ROLLBACK;
+               
+END;
+
+
+-- (사용자입장)교수 UPDATE 프로시저 PRC_PROFESSOR_UPDATE(코드, 기존PW, 바꿀PW)
+CREATE OR REPLACE PROCEDURE PRC_PROFESSOR_UPDATE
+(
+     V_PROF_CODE        IN TBL_PROFESSOR.PROF_CODE%TYPE 
+    ,V_PROF_PW          IN TBL_PROFESSOR.PROF_SSN%TYPE      -- 기존 PW
+    ,V_PROF_NEW_PW      IN TBL_PROFESSOR.PROF_PW%TYPE       -- NEW 바꿀 PW
+)
+IS
+    V_ORI_PW     TBL_PROFESSOR.PROF_PW%TYPE;
+    
+    USER_DEFINE_ERROR   EXCEPTION;
+   
+BEGIN
+    
+    SELECT PROF_PW INTO V_ORI_PW
+    FROM TBL_PROFESSOR
+    WHERE PROF_CODE = V_PROF_CODE AND (SELECT PROF_PW
+                                       FROM TBL_PROFESSOR
+                                       WHERE PROF_CODE=V_PROF_CODE)=V_PROF_PW; 
+                                                                              
+    IF  (V_ORI_PW != V_PROF_PW) 
+        THEN RAISE USER_DEFINE_ERROR;
+    END IF;  
+        
+    -- 코드 , 기존 PW 비교 → NEW PW 변경    
+    
+    UPDATE TBL_PROFESSOR
+    SET PROF_PW = V_PROF_NEW_PW 
+    WHERE PROF_CODE = V_PROF_CODE AND (SELECT PROF_PW
+                                       FROM TBL_PROFESSOR
+                                       WHERE PROF_CODE=V_PROF_CODE)=V_PROF_PW;                                           
     
     
-    --예외 처리
-      EXCEPTION
-        WHEN OTHERS 
-            THEN ROLLBACK;                                   
+    EXCEPTION
+        WHEN USER_DEFINE_ERROR
+             THEN RAISE_APPLICATION_ERROR(-20101, '기존 아이디와 패스워드가 일치하지 않습니다.');
+            ROLLBACK;   
+        WHEN OTHERS
+            THEN ROLLBACK;
+    
+    --커밋
+    COMMIT;                                          
+    
+                                     
 END;
 --==>> Procedure PRC_PROFESSOR_UPDATE이(가) 컴파일되었습니다.
 
 
--- 교수 DELETE 프로시저 PRC_PROFESSOR_DELETE(PROF_CODE,PROF_PW)
-
+-- 교수 DELETE 프로시저 PRC_PROFESSOR_DELETE(PROF_CODE)
 CREATE OR REPLACE PROCEDURE PRC_PROFESSOR_DELETE
-(
-     V_PROF_CODE    IN TBL_PROFESSOR.PROF_CODE%TYPE
-    ,V_PROF_PW      IN TBL_PROFESSOR.PROF_PW%TYPE 
-)
+(   V_PROF_CODE    IN TBL_PROFESSOR.PROF_CODE%TYPE )
 IS
 BEGIN
     
-    -- CODE, PW 같으면 해당되는 행 삭제 
     DELETE
     FROM TBL_PROFESSOR
-    WHERE PROF_CODE = V_PROF_CODE AND (SELECT PROF_PW
-                                       FROM TBL_PROFESSOR
-                                       WHERE PROF_CODE=V_PROF_CODE)=V_PROF_PW;
+    WHERE PROF_CODE = V_PROF_CODE;
         
-      -- 커밋
-      -- COMMIT;
-      
-      
-      --예외 처리
-      EXCEPTION
-        WHEN OTHERS 
-            THEN ROLLBACK;
-    
-         
+    -- 커밋
+    COMMIT;
+
+           
 END;
 --==>> Procedure PRC_PROFESSOR_DELETE이(가) 컴파일되었습니다.
 
@@ -294,60 +319,104 @@ CREATE OR REPLACE PROCEDURE PRC_STUDENT_INSERT
 )
 IS
     V_STD_CODE TBL_STUDENT.STD_CODE%TYPE;     -- 생성된 코드를 담을 변수
-
 BEGIN
     -- 학생 코드 생성
-    V_STD_CODE := 'S' || TO_CHAR(SEQ_STUDENT.NEXTVAL);
+    V_STD_CODE := 'S' || TO_CHAR(SYSDATE, 'YYYY') || TO_CHAR(SEQ_STUDENT.NEXTVAL);
     
     -- 학생 테이블 INSERT 쿼리문 구성
     INSERT INTO TBL_STUDENT(STD_CODE, STD_NAME, STD_SSN, STD_PW)
     VALUES(V_STD_CODE, V_STD_NAME, V_STD_SSN, V_STD_SSN);
     
     -- 커밋
-    -- COMMIT;
+    COMMIT;
 END;
 --==>> Procedure PRC_STUDENT_INSERT이(가) 컴파일되었습니다.
 
--- 학생 업데이트 프로시저 생성 PRC_STUDENT_UPDATE(학생코드, 이름, 주민번호뒷자리, 학생PW)
-
-CREATE OR REPLACE PROCEDURE PRC_STUDENT_UPDATE
-(   V_STD_CODE IN TBL_STUDENT.STD_CODE%TYPE
-,   V_STD_NAME IN TBL_STUDENT.STD_NAME%TYPE   -- 바꿀이름
-,   V_STD_SSN  IN TBL_STUDENT.STD_SSN%TYPE
-,   V_STD_PW   IN TBL_STUDENT.STD_PW%TYPE     -- 바꿀PW
+-- 관리자 입장에서 학생 UPDATE 프로시저 PRC_AD_STUDENT_UPDATE(학생코드, NEW 이름, NEW 주민번호)
+CREATE OR REPLACE PROCEDURE PRC_AD_STUDENT_UPDATE
+(
+     V_STD_CODE    IN TBL_STUDENT.STD_CODE%TYPE 
+    ,V_STD_NAME    IN TBL_STUDENT.STD_NAME%TYPE     -- NEW 이름
+    ,V_STD_SSN     IN TBL_STUDENT.STD_SSN%TYPE      -- NEW 주민번호
 )
-IS
+IS   
 BEGIN
+
+    UPDATE TBL_STUDENT
+    SET STD_NAME = V_STD_NAME, STD_SSN = V_STD_SSN
+    WHERE STD_CODE = V_STD_CODE;
+
+    DBMS_OUTPUT.PUT_LINE('변경사항이 성공적으로 반영되었습니다.');
+    
+    --커밋
+    COMMIT;  
+    
+    EXCEPTION
+        WHEN OTHERS
+            THEN ROLLBACK;
+               
+END;
+--==>> Procedure PRC_AD_STUDENT_UPDATE이(가) 컴파일되었습니다.
+
+
+-- (학생)학생 업데이트 프로시저 생성 PRC_STUDENT_UPDATE(자기ID, 기존PW, 바꿀PW)
+CREATE OR REPLACE PROCEDURE PRC_STUDENT_UPDATE
+(   V_STD_CODE   IN TBL_STUDENT.STD_CODE%TYPE
+,   V_STD_OLD_PW IN TBL_STUDENT.STD_PW%TYPE     -- 기존PW
+,   V_STD_NEW_PW IN TBL_STUDENT.STD_PW%TYPE     -- 바꿀PW
+)
+IS 
+    V_ORI_STD_CODE TBL_STUDENT.STD_CODE%TYPE;
+    V_ORI_STD_PW   TBL_STUDENT.STD_PW%TYPE;
+    
+    USER_DEFINE_ERROR EXCEPTION;
+BEGIN
+    SELECT STD_CODE, STD_PW INTO V_ORI_STD_CODE, V_ORI_STD_PW
+    FROM TBL_STUDENT
+    WHERE STD_CODE = V_STD_CODE AND (SELECT STD_PW
+                                     FROM TBL_STUDENT
+                                     WHERE STD_CODE = V_STD_CODE) = V_STD_OLD_PW;
+
+    IF (V_ORI_STD_CODE != V_STD_CODE OR V_ORI_STD_PW != V_STD_OLD_PW)
+        THEN RAISE USER_DEFINE_ERROR;       
+    END IF;   
+    
      -- 코드, 주민번호 비교 → NAME, PW 변경
     UPDATE TBL_STUDENT
-    SET STD_NAME = V_STD_NAME
-      , STD_PW = V_STD_PW
-    WHERE STD_CODE =  V_STD_CODE AND (SELECT STD_SSN
+    SET STD_PW = V_STD_NEW_PW
+    WHERE STD_CODE =  V_STD_CODE AND (SELECT STD_PW
                                       FROM TBL_STUDENT
-                                      WHERE STD_CODE=V_STD_CODE)=V_STD_SSN;
-
+                                      WHERE STD_CODE=V_STD_CODE)=V_STD_OLD_PW;
+                                      
     -- 커밋
-    -- COMMIT;
+    COMMIT;
+    
+    -- 예외 처리
+    EXCEPTION
+        WHEN USER_DEFINE_ERROR
+            THEN RAISE_APPLICATION_ERROR(-20101, '기존 아이디와 패스워드가 일치하지 않습니다.');
+            ROLLBACK;
+        WHEN OTHERS
+            THEN ROLLBACK;
 END;
 --==>> Procedure PRC_STUDENT_UPDATE이(가) 컴파일되었습니다.
 
--- 학생 삭제 프로시저 생성 PRC_STUDENT_UPDATE(학생코드, 학생PW)
+-- 학생 삭제 프로시저 생성 PRC_STUDENT_DELETE(학생코드, 학생PW)
 
+--PRC_STUDENT_DELETE(학생코드)
 CREATE OR REPLACE PROCEDURE PRC_STUDENT_DELETE
-(   V_STD_CODE IN TBL_STUDENT.STD_CODE%TYPE      -- 학생코드
-,   V_STD_PW   IN TBL_STUDENT.STD_PW%TYPE     -- 학생PW
-)
+(   V_STD_CODE IN TBL_STUDENT.STD_CODE%TYPE ) -- 학생 코드
 IS
 BEGIN
     -- 학생 테이블 DELETE 쿼리문 구성
     DELETE
     FROM TBL_STUDENT
-    WHERE STD_CODE = V_STD_CODE AND (SELECT V_STD_PW
-                                     FROM TBL_STUDENT
-                                     WHERE STD_CODE=V_STD_CODE)=V_STD_PW;
+    WHERE STD_CODE = V_STD_CODE;
+    
+    DBMS_OUTPUT.PUT_LINE('성공적으로 삭제되었습니다.');
     
     -- 커밋
-    -- COMMIT;
+    COMMIT;
 END;
 --==>> Procedure PRC_STUDENT_DELETE이(가) 컴파일되었습니다.
 
@@ -371,6 +440,9 @@ BEGIN
     -- 연산 및 처리
     INSERT INTO TBL_COURSE(CRS_CODE, CRS_NAME)
     VALUES(V_CRS_CODE, V_CRS_NAME);
+    
+    --커밋
+    COMMIT;
 END;
 --==>> Procedure PRC_COURSE_INSERT이(가) 컴파일되었습니다.
 
@@ -386,6 +458,9 @@ BEGIN
     UPDATE TBL_COURSE
     SET CRS_NAME = V_CRS_NAME
     WHERE CRS_CODE = V_CRS_CODE;
+    
+    --커밋
+    COMMIT;
 END;
 --==>> Procedure PRC_COURSE_UPDATE이(가) 컴파일되었습니다.
 
@@ -406,10 +481,9 @@ BEGIN
     FROM TBL_COURSE
     WHERE CRS_CODE = V_CRS_CODE;
     
-    -- 예외처리
-    EXCEPTION
-        WHEN OTHERS
-            THEN ROLLBACK;
+    --커밋
+    COMMIT;
+
 END;
 --==>> Procedure PRC_COURSE_DELETE이(가) 컴파일되었습니다.
 
@@ -434,7 +508,7 @@ BEGIN
     VALUES(V_SUB_CODE, V_SUB_NAME);
     
     --커밋
-    --COMMIT;
+    COMMIT;
 
 END;
 --==>> Procedure PRC_SUBJECT_INSERT이(가) 컴파일되었습니다.
@@ -452,7 +526,7 @@ BEGIN
     WHERE SUB_CODE = V_SUB_CODE;
     
     --커밋
-    --COMMIT;
+    COMMIT;
 
 END;
 --==>> Procedure PRC_SUBJECT_UPDATE이(가) 컴파일되었습니다.
@@ -469,11 +543,7 @@ BEGIN
     WHERE SUB_CODE = V_SUB_CODE;
     
     --커밋
-    --COMMIT;    
-    
-    --예외처리..
-    EXCEPTION
-        WHEN OTHERS THEN ROLLBACK; 
+    COMMIT;    
 
 END;
 --==>> Procedure PRC_SUBJECT_DELETE이(가) 컴파일되었습니다.
@@ -541,20 +611,140 @@ BEGIN
             ROLLBACK;
         
     -- 커밋
-    --COMMIT;
+    COMMIT;
     
 END;
 --==>> Procedure PRC_OPENC_INSERT이(가) 컴파일되었습니다.
+
+-- 과정개설 UPDATE 프로시저 PRC_OPENC_UPDATE(과정개설코드, NEW강의실코드, NEW과정시작일자, NEW과정종료일자)
+CREATE OR REPLACE PROCEDURE PRC_OPENC_UPDATE
+( V_OPENC_CODE  IN TBL_OPENC.OPENC_CODE%TYPE
+, V_ROOM_CODE   IN TBL_ROOM.ROOM_CODE%TYPE
+, V_CRS_START     IN TBL_OPENC.CRS_START%TYPE
+, V_CRS_END       IN TBL_OPENC.CRS_END%TYPE
+)
+IS  
+    V_CRS_END_TEMP  TBL_OPENC.CRS_END%TYPE;
+    
+    USER_DEFINE_ERROR  EXCEPTION;
+    
+    --커서 선언
+    CURSOR CUR_ROOM_CHE
+    IS
+    SELECT CRS_END
+    FROM TBL_OPENC
+    WHERE ROOM_CODE = V_ROOM_CODE;
+    
+BEGIN
+    -- 커서 열기
+    OPEN CUR_ROOM_CHE;
+    
+    LOOP
+        FETCH CUR_ROOM_CHE INTO V_CRS_END_TEMP;
+        
+        EXIT WHEN CUR_ROOM_CHE%NOTFOUND;
+        
+        IF (V_CRS_START <= V_CRS_END_TEMP)
+            THEN RAISE USER_DEFINE_ERROR;
+        END IF;
+        
+    END LOOP;
+    
+    -- 커서 닫기
+    CLOSE CUR_ROOM_CHE;
+
+    -- UPDATE 쿼리문
+    UPDATE TBL_OPENC
+    SET ROOM_CODE = V_ROOM_CODE, CRS_START = V_CRS_START, CRS_END = V_CRS_END
+    WHERE OPENC_CODE = V_OPENC_CODE;
+    
+    EXCEPTION
+        WHEN USER_DEFINE_ERROR
+            THEN RAISE_APPLICATION_ERROR(-20003, '현재 강의 진행중인 과정의 강의실입니다.');
+            ROLLBACK;
+    
+    --커밋
+    COMMIT;
+END;
+--==>> Procedure PRC_OPENC_UPDATE이(가) 컴파일되었습니다.
+
+-- 과정개설 DELETE 프로시저 PRC_OPENC_DELETE(과정개설코드)
+CREATE OR REPLACE PROCEDURE PRC_OPENC_DELETE
+( V_OPENC_CODE  IN TBL_OPENC.OPENC_CODE%TYPE
+)
+IS
+BEGIN
+    
+    -- DELETE 쿼리문
+    DELETE
+    FROM TBL_OPENC
+    WHERE OPENC_CODE = V_OPENC_CODE;
+    
+    --커밋
+    COMMIT;
+    
+END;
+--==>> Procedure PRC_OPENC_DELETE이(가) 컴파일되었습니다.
 
 --------------------------------------------------------------------------------
 
 -----------------------------6. 과목개설 프로시저--------------------------------
 
+-- 교수 강의 가능 판별 함수(교수코드, 과목개설코드, 강의시작일, 강의종료일)
+CREATE OR REPLACE FUNCTION FN_OPENS_SELECT_PROF
+( V_PROF_CODE  IN TBL_PROFESSOR.PROF_CODE%TYPE -- 교수코드
+, V_OPENS_CODE IN TBL_OPENS.OPENS_CODE%TYPE    -- 과목개설코드
+, V_SUB_START  IN TBL_OPENS.SUB_START%TYPE   -- 강의시작일
+, V_SUB_END    IN TBL_OPENS.SUB_END%TYPE     -- 강의종료일
+)
+RETURN NUMBER
+IS
+    -- 주요 변수 선언
+    V_SUB_START_TEMP    TBL_OPENS.SUB_START%TYPE; -- 교수코드가 같은 과목들의 과목시작일자
+    V_SUB_END_TEMP      TBL_OPENS.SUB_END%TYPE;   -- 교수코드가 같은 과목들의 과목종료일자
+    V_RESULT            NUMBER;                   -- 함수를 통해 분기된 결과값
+    
+    -- 커서 작성
+    CURSOR CUR_OPENS_SELECT_PROF
+    IS
+    SELECT SUB_START, SUB_END                     -- ③ 즉, 해당 교수 이름이 들어간 과목의 과목시작일과 종료일을 모두 눌러담는다.        
+    FROM TBL_OPENS
+    WHERE PROF_CODE = V_PROF_CODE;                 -- ① 교수 코드가 같고
+          --AND OPENS_CODE != V_OPENS_CODE;         -- ② 수정할 과목개설코드가 아닌
+BEGIN    
+    -- 커서 오픈 AND V_SUB_START_TEMP, V_SUB_END_TEMP, V_RESULT 채우기
+    OPEN CUR_OPENS_SELECT_PROF;
+    
+    LOOP
+        FETCH CUR_OPENS_SELECT_PROF INTO V_SUB_START_TEMP, V_SUB_END_TEMP;
+        
+        IF 
+        --ⓐ 수정할 과목기간이 해당 교수가 맡고 있는 다른 과목들의 과목 시작일 및 종료일 사이에 있으면 안 됨.  
+        V_SUB_START BETWEEN V_SUB_START_TEMP AND V_SUB_END_TEMP
+        -- 수정할 과목의 시작일이 기존과목들 시작일자 와 기존과목들 종료일자 사이에 있거나
+        OR V_SUB_END BETWEEN V_SUB_END_TEMP AND V_SUB_END_TEMP
+        -- 수정할 과목의 종료일이 기존과목들 시작일자 와 기존과목들 종료일자 사이에 있다면
+            THEN V_RESULT := 0; -- UPDATE X
+        
+        ELSE V_RESULT := 1;     -- UPDATE O
+        END IF;
+                
+        EXIT WHEN CUR_OPENS_SELECT_PROF%NOTFOUND;
+    END LOOP;
+    
+    -- 커서 클로즈
+    CLOSE CUR_OPENS_SELECT_PROF;
+
+    -- 최종결과값 반환
+    RETURN V_RESULT;
+END;
+
 -- 기간조건 판별 함수
--- 과정개설코드와 과목시작일자와 과목종료일자를 매개변수로 받는다
-CREATE OR REPLACE FUNCTION FN_OPENS_SELECT
+-- 과정개설코드와 과목개설코드와 과목시작일자와 과목종료일자를 매개변수로 받는다
+CREATE OR REPLACE FUNCTION FN_OPENS_SELECT_STEND
 (
   V_OPENC_CODE  IN TBL_OPENC.OPENC_CODE%TYPE -- 과정개설코드
+, V_OPENS_CODE  IN TBL_OPENS.OPENS_CODE%TYPE -- 과목개설코드
 , V_SUB_START   IN TBL_OPENS.SUB_START%TYPE  -- 과목시작일자
 , V_SUB_END     IN TBL_OPENS.SUB_END%TYPE    -- 과목종료일자
 )
@@ -569,13 +759,14 @@ IS
     V_CRS_END           TBL_OPENC.CRS_END%TYPE;     -- 과정종료일자
     
     -- 커서 작성
-    CURSOR CUR_OPENS_SELECT
+    CURSOR CUR_OPENS_SELECT_STEND
     IS
     SELECT SUB_START, SUB_END                             -- ③해당 과목들의 과목시작일자와, 과목종료일자를 받는다.
     FROM TBL_OPENS
     WHERE OPENS_CODE = (SELECT OPENS_CODE                 -- ② 과목개설코드들을 찾아서
                         FROM TBL_OPENC
-                        WHERE OPENC_CODE = V_OPENC_CODE); -- ① 과정개설코드가 같은
+                        WHERE OPENC_CODE = V_OPENC_CODE)  -- ① 과정개설코드가 같은
+          AND OPENS_CODE != V_OPENS_CODE;                 --    그리고, 입력된 과목개설코드와는 같지 않은 (다른 과목들)
 BEGIN
     -- V_CRS_START, V_CRS_END 채우기
     SELECT CRS_START, CRS_END INTO V_CRS_START, V_CRS_END   -- 과정시작일과 과정종료일을 따온다.
@@ -583,19 +774,19 @@ BEGIN
     WHERE OPENC_CODE = V_OPENC_CODE;    -- 입력받은 과정개설코드의 
     
     -- 커서 오픈 AND V_SUB_START_TEMP, V_SUB_END_TEMP, V_RESULT 채우기
-    OPEN CUR_OPENS_SELECT;
+    OPEN CUR_OPENS_SELECT_STEND;
     
     LOOP
-        FETCH CUR_OPENS_SELECT INTO V_SUB_START_TEMP, V_SUB_END_TEMP;
+        FETCH CUR_OPENS_SELECT_STEND INTO V_SUB_START_TEMP, V_SUB_END_TEMP;
         
         --ⓐ 과목시작일자는 SYSDATE 보다 과거이면 안 됨
         IF V_SUB_START < SYSDATE--과목등록일자
         --(과목시작일자가 SYSDATE 전이거나)
         
         --ⓑ 과목 시작일과 과목 종료일은 과정시작일과 과정종료일 사이에 있어야 한다.
-        OR V_SUB_END <= V_CRS_START
+        OR V_SUB_START NOT BETWEEN V_CRS_START AND V_CRS_END
         -- OR 과목 종료일이 과정시작일 전이다. 과목 시작일은 과목 종료일보다 전이므로, 자연스럽게 과정시작일 보다 과거가 된다.
-        OR V_SUB_END > V_CRS_END
+        OR V_SUB_END NOT BETWEEN V_CRS_START AND V_CRS_END
         -- OR 과목 종료일이 과정종료일 밖이다. 과목 시작일은 과목 종료일보다 전이므로, 자연스럽게 과정종료일 보다 미래가 된다. 
         
         --ⓒ 과정 내 다른 과목 기간과 겹치지 않아야 함.  
@@ -608,9 +799,12 @@ BEGIN
         ELSE V_RESULT := 1;     -- UPDATE O
         END IF;
                 
-        EXIT WHEN CUR_OPENS_SELECT%NOTFOUND;
+        EXIT WHEN CUR_OPENS_SELECT_STEND%NOTFOUND;
     END LOOP;
-
+    
+    -- 커서 클로즈
+    CLOSE CUR_OPENS_SELECT_STEND;
+    
     -- 최종결과값 반환
     RETURN V_RESULT;
 END;
@@ -634,19 +828,29 @@ IS
     -- 변수    
     V_OPENS_CODE    TBL_OPENS.OPENS_CODE%TYPE;  -- 과목개설코드
     
-    V_RESULT            NUMBER;
+    -- 함수 결과값 담을 변수
+    V_RESULT_STEND  NUMBER;
+    V_RESULT_PROF   NUMBER;
     
-    USER_DEFINE_ERROR   EXCEPTION;
+    USER_DEFINE_ERROR_STEND  EXCEPTION;
+    USER_DEFINE_ERROR_PROF   EXCEPTION;
 BEGIN
     -- 과목개설코드
     V_OPENS_CODE := SEQ_OPENS.NEXTVAL;
-    -- 함수를 통해 값 따오기
-    SELECT FN_OPENS_SELECT(V_OPENC_CODE, V_SUB_START, V_SUB_END) INTO V_RESULT
+    -- 기간판별함수를 통해 값 따오기
+    SELECT FN_OPENS_SELECT_STEND(V_OPENC_CODE, V_OPENS_CODE, V_SUB_START, V_SUB_END) INTO V_RESULT_STEND
+    FROM DUAL;
+    -- 교수강의가능판별함수를 통해 값 따오기
+    SELECT FN_OPENS_SELECT_PROF(V_PROF_CODE, V_OPENS_CODE, V_SUB_START, V_SUB_END) INTO V_RESULT_PROF
     FROM DUAL;
     
     -- UPDATE 여부 결정
-    IF V_RESULT = 0
-        THEN RAISE USER_DEFINE_ERROR;
+    IF V_RESULT_STEND = 0
+        THEN RAISE USER_DEFINE_ERROR_STEND;
+    END IF;
+    
+    IF V_RESULT_PROF = 0
+        THEN RAISE USER_DEFINE_ERROR_PROF;
     END IF;
     
     -- INSERT 문 작성
@@ -655,10 +859,16 @@ BEGIN
     VALUES(V_OPENC_CODE, V_OPENS_CODE, V_SUB_CODE, V_BOOK_CODE, V_PROF_CODE
          , V_SUB_START, V_SUB_END); -- 출결, 실기, 필기 배점은 NULL 값 들어가도록 생략
          
+    -- 커밋
+    COMMIT;
+         
     -- 예외 캐치
     EXCEPTION 
-        WHEN USER_DEFINE_ERROR
-            THEN RAISE_APPLICATION_ERROR(-20001, '기간 설정을 다시 해 주세요~!!!');
+        WHEN USER_DEFINE_ERROR_STEND
+            THEN RAISE_APPLICATION_ERROR(-20001, '과목 기간 설정오류입니다. 다시 확인해주세요.');
+                ROLLBACK;
+        WHEN USER_DEFINE_ERROR_PROF
+            THEN RAISE_APPLICATION_ERROR(-20006, '해당 교수는 입력한 과목 기간에 이미 배정된 강의가 있습니다.');
                 ROLLBACK;
         WHEN OTHERS
             THEN ROLLBACK;
@@ -666,48 +876,64 @@ END;
 --==>> Procedure PRC_OPENS_INSERT이(가) 컴파일되었습니다.
 
 -- ② 과목개설 UPDATE
--- 과목시작일자가 SYSDATE < 과목시작일자 조건 → TRIGGER
+-- 과목시작일자가 SYSDATE < 과목시작일자 조건 
 -- 실행 예)
--- EXEC PRC_OPENS_UPDATE(과목개설코드, 과목코드, 과목시작일, 과목종료일, 교재코드, 교수자코드)
+-- EXEC PRC_OPENS_UPDATE(과정개설코드, 과목개설코드, 과목코드, 과목시작일, 과목종료일, 교재코드, 교수자코드)
 -- 과정개설코드 는 변경 불가.
 -- *과정개설코드, 과목시작일, 과목종료일은 변경 가능하도록 해야 하는가?
 -- 과정개설코드는 복잡해지니까 변경 불가한 것으로 하고, 과목시작일, 종료일, 교재코드, 교수자코드만 변경 가능하도록.
 -- 이 경우, ⓐ과목 시작일은 SYSDATE 보다 미래여야 하고, ⓑ과목 시작일과 과목 종료일은 과정시작일과 과정종료일 안이어야 하며,
 -- ⓒ다른 과목 기간과 겹치지 않아야 함. 
-
-
 CREATE OR REPLACE PROCEDURE PRC_OPENS_UPDATE
 ( V_OPENC_CODE  IN TBL_OPENC.OPENC_CODE%TYPE
 , V_OPENS_CODE  IN TBL_OPENS.OPENS_CODE%TYPE
+, V_SUB_CODE    IN TBL_SUBJECT.SUB_CODE%TYPE
 , V_SUB_START   IN TBL_OPENS.SUB_START%TYPE
 , V_SUB_END     IN TBL_OPENS.SUB_END%TYPE
 , V_BOOK_CODE   IN TBL_BOOK.BOOK_CODE%TYPE
 , V_PROF_CODE   IN TBL_PROFESSOR.PROF_CODE%TYPE
 )
 IS
-    V_RESULT            NUMBER;
-    USER_DEFINE_ERROR   EXCEPTION;
+    -- 함수 결과값 담을 변수
+    V_RESULT_STEND  NUMBER;
+    V_RESULT_PROF   NUMBER;
+    
+    USER_DEFINE_ERROR_STEND  EXCEPTION;
+    USER_DEFINE_ERROR_PROF   EXCEPTION;
 BEGIN
     -- 함수를 통해 값 따오기
-    SELECT FN_OPENS_SELECT(V_OPENC_CODE, V_SUB_START, V_SUB_END) INTO V_RESULT
+    -- 기간판별함수를 통해 값 따오기
+    SELECT FN_OPENS_SELECT_STEND(V_OPENC_CODE, V_OPENS_CODE, V_SUB_START, V_SUB_END) INTO V_RESULT_STEND
+    FROM DUAL;
+    -- 교수강의가능판별함수를 통해 값 따오기
+    SELECT FN_OPENS_SELECT_PROF(V_PROF_CODE, V_OPENS_CODE, V_SUB_START, V_SUB_END) INTO V_RESULT_PROF
     FROM DUAL;
     
     -- UPDATE 여부 결정
-    IF V_RESULT = 0
-        THEN RAISE USER_DEFINE_ERROR;
+    IF V_RESULT_STEND = 0
+        THEN RAISE USER_DEFINE_ERROR_STEND;
+    END IF;
+    
+    IF V_RESULT_PROF = 0
+        THEN RAISE USER_DEFINE_ERROR_PROF;
     END IF;
     
     -- UPDATE 문 작성
     UPDATE TBL_OPENS
-    SET SUB_START = V_SUB_START, SUB_END = V_SUB_END
+    SET SUB_CODE = V_SUB_CODE, SUB_START = V_SUB_START, SUB_END = V_SUB_END
       , BOOK_CODE = V_BOOK_CODE, PROF_CODE = V_PROF_CODE 
     WHERE OPENS_CODE = V_OPENS_CODE;
     
+    --커밋
+    COMMIT;
+    
     -- 예외 캐치
     EXCEPTION 
-        WHEN USER_DEFINE_ERROR
-            THEN RAISE_APPLICATION_ERROR(-20001, '기간 설정을 다시 해 주세요~!!!');
+        WHEN USER_DEFINE_ERROR_STEND
+            THEN RAISE_APPLICATION_ERROR(-20001, '과목 기간 설정오류입니다. 다시 확인해주세요.');
                 ROLLBACK;
+        WHEN USER_DEFINE_ERROR_PROF
+            THEN RAISE_APPLICATION_ERROR(-20006, '해당 교수는 입력한 과목 기간에 이미 배정된 강의가 있습니다.');
         WHEN OTHERS
             THEN ROLLBACK;
 END;
@@ -726,6 +952,9 @@ BEGIN
     DELETE
     FROM TBL_OPENS
     WHERE OPENS_CODE = V_OPENS_CODE;
+    
+    --커밋
+    COMMIT;
 END;
 --==>> Procedure PRC_OPENS_DELETE이(가) 컴파일되었습니다.
 --------------------------------------------------------------------------------
@@ -748,7 +977,7 @@ BEGIN
     VALUES(V_ROOM_CODE, V_ROOM_NAME, V_ROOM_NUM);
     
     -- 커밋
-    -- COMMIT;
+    COMMIT;
 END;
 --==>> Procedure PRC_ROOM_INSERT이(가) 컴파일되었습니다.
 
@@ -768,12 +997,12 @@ BEGIN
     WHERE ROOM_CODE = V_ROOM_CODE;
     
     -- 커밋
-    -- COMMIT;
+    COMMIT;
 END;
 --==>> Procedure PRC_ROOM_UPDATE이(가) 컴파일되었습니다.
 
 -- 강의실 삭제 프로시저 생성 PRC_ROOM_DELETE(강의실코드)
-CREATE OR REPLACE PROCEDURE PRC_STUDENT_DELETE
+CREATE OR REPLACE PROCEDURE PRC_ROOM_DELETE
 (   V_ROOM_CODE IN TBL_ROOM.ROOM_CODE%TYPE      -- 강의실코드
 )
 IS
@@ -784,7 +1013,7 @@ BEGIN
     WHERE ROOM_CODE = V_ROOM_CODE;
     
     -- 커밋
-    -- COMMIT;
+    COMMIT;
 END;
 --==>> Procedure PRC_STUDENT_DELETE이(가) 컴파일되었습니다.
 
@@ -809,12 +1038,12 @@ BEGIN
     VALUES(V_BOOK_CODE, V_BOOK_NAME);
     
     --커밋
-    --COMMIT;
+    COMMIT;
 
       --예외 처리
-      EXCEPTION
-        WHEN OTHERS 
-            THEN ROLLBACK;    
+      --EXCEPTION
+        --WHEN OTHERS 
+            --THEN ROLLBACK;    
 END;
 --==>> Procedure PRC_BOOK_INSERT이(가) 컴파일되었습니다.
 
@@ -835,12 +1064,12 @@ BEGIN
     WHERE BOOK_CODE = V_BOOK_CODE;
     
     --커밋
-    --COMMIT;
+    COMMIT;
     
       --예외 처리
-      EXCEPTION
-        WHEN OTHERS 
-            THEN ROLLBACK;    
+      --EXCEPTION
+        --WHEN OTHERS 
+            --THEN ROLLBACK;    
 END;
 --==>> Procedure PRC_BOOK_UPDATE이(가) 컴파일되었습니다.
 
@@ -858,12 +1087,12 @@ BEGIN
     WHERE BOOK_CODE = V_BOOK_CODE;
 
       --커밋
-      --COMMIT;
+      COMMIT;
 
       --예외 처리
-      EXCEPTION
-        WHEN OTHERS 
-            THEN ROLLBACK;
+      --EXCEPTION
+        --WHEN OTHERS 
+            --THEN ROLLBACK;
 END;
 --==>> Procedure PRC_BOOK_DELETE이(가) 컴파일되었습니다.
 
@@ -872,19 +1101,48 @@ END;
 -----------------------------9. 중도탈락 프로시저--------------------------------
 
 -- 중도탈락 입력 프로시저 생성 PRC_FAIL_INSERT(수강신청코드,중도탈락일자,중도탈락사유)
+-- 중도 탈락일자가 과정 시작~ 종료 일자 사이에 들어와야 함.
 CREATE OR REPLACE PROCEDURE PRC_FAIL_INSERT
 ( V_REGISTER_CODE  IN TBL_FAIL.REGISTER_CODE%TYPE
 , V_FAIL_DATE      IN TBL_FAIL.FAIL_DATE%TYPE
 , V_FAIL_REASON    IN TBL_FAIL.FAIL_REASON%TYPE
 )
 IS    
+    V_OPENC_CODE    TBL_OPENC.OPENC_CODE%TYPE;      -- 입력받은 수강신청코드에 해당하는 과정개설코드를 담을 변수
+    V_CRS_START     TBL_OPENC.CRS_START%TYPE;       -- 입력받은 수강신청코드에 해당하는 과정의 시작일자를 담을 변수
+    V_CRS_END       TBL_OPENC.CRS_END%TYPE;       -- 입력받은 수강신청코드에 해당하는 과정의 종료일자를 담을 변수
+    
+    USER_DEFINE_ERROR EXCEPTION;
+    
 BEGIN
+    -- 변수 초기화
+    SELECT OPENC_CODE INTO V_OPENC_CODE
+    FROM TBL_REGISTER
+    WHERE REGISTER_CODE = V_REGISTER_CODE;
+    
+    SELECT CRS_START, CRS_END INTO V_CRS_START, V_CRS_END
+    FROM TBL_OPENC
+    WHERE OPENC_CODE = V_OPENC_CODE;
+    
+    --예외발생
+    IF(V_FAIL_DATE NOT BETWEEN V_CRS_START AND V_CRS_END)
+        THEN RAISE USER_DEFINE_ERROR;
+    END IF;
+    
     --INSERT 쿼리문 작성
     INSERT INTO TBL_FAIL(REGISTER_CODE, FAIL_DATE, FAIL_REASON)
     VALUES(V_REGISTER_CODE, V_FAIL_DATE, V_FAIL_REASON);
     
     --커밋
-    --COMMIT;
+    COMMIT;
+    
+    --예외처리
+    EXCEPTION
+        WHEN USER_DEFINE_ERROR
+            THEN RAISE_APPLICATION_ERROR(-20007, '중도탈락일자를 다시 확인해주세요.');
+                 ROLLBACK;
+        WHEN OTHERS
+            THEN ROLLBACK;
 
 END;
 --==>> Procedure PRC_FAIL_INSERT이(가) 컴파일되었습니다.
@@ -897,7 +1155,26 @@ CREATE OR REPLACE PROCEDURE PRC_FAIL_UPDATE
 , V_FAIL_REASON    IN TBL_FAIL.FAIL_REASON%TYPE
 )
 IS    
+    V_OPENC_CODE    TBL_OPENC.OPENC_CODE%TYPE;      -- 입력받은 수강신청코드에 해당하는 과정개설코드를 담을 변수
+    V_CRS_START     TBL_OPENC.CRS_START%TYPE;       -- 입력받은 수강신청코드에 해당하는 과정의 시작일자를 담을 변수
+    V_CRS_END       TBL_OPENC.CRS_END%TYPE;       -- 입력받은 수강신청코드에 해당하는 과정의 종료일자를 담을 변수
+    
+    USER_DEFINE_ERROR EXCEPTION;
 BEGIN
+    -- 변수 초기화
+    SELECT OPENC_CODE INTO V_OPENC_CODE
+    FROM TBL_REGISTER
+    WHERE REGISTER_CODE = V_REGISTER_CODE;
+    
+    SELECT CRS_START, CRS_END INTO V_CRS_START, V_CRS_END
+    FROM TBL_OPENC
+    WHERE OPENC_CODE = V_OPENC_CODE;
+    
+    --예외발생
+    IF(V_FAIL_DATE NOT BETWEEN V_CRS_START AND V_CRS_END)
+        THEN RAISE USER_DEFINE_ERROR;
+    END IF;
+    
     --UPDATE 쿼리문 작성
     UPDATE TBL_FAIL
     SET REGISTER_CODE = V_REGISTER_CODE
@@ -906,7 +1183,15 @@ BEGIN
     WHERE REGISTER_CODE = V_OLD_REGISTER_CODE;
     
     --커밋
-    --COMMIT;
+    COMMIT;
+    
+    --예외처리
+    EXCEPTION
+        WHEN USER_DEFINE_ERROR
+            THEN RAISE_APPLICATION_ERROR(-20007, '중도탈락일자를 다시 확인해주세요.');
+                 ROLLBACK;
+        WHEN OTHERS
+            THEN ROLLBACK;
 
 END;
 --==>> Procedure PRC_FAIL_UPDATE이(가) 컴파일되었습니다
@@ -923,7 +1208,7 @@ BEGIN
     WHERE REGISTER_CODE = V_REGISTER_CODE;
     
     --커밋
-    --COMMIT;
+    COMMIT;
 
 END;
 --==>> Procedure PRC_FAIL_DELETE이(가) 컴파일되었습니다.
@@ -966,7 +1251,7 @@ BEGIN
       AND OPENS_CODE = V_OPENS_CODE; 
     
     -- 커밋
-    -- COMMIT;
+    COMMIT;
     
     -- 예외 처리
     EXCEPTION
@@ -978,7 +1263,7 @@ BEGIN
 END;
 --==>> Procedure PRC_SCORE_UPDATE이(가) 컴파일되었습니다.
 
--- 성적 삭제(다시 NULL 값으로) 프로시저 생성 PRC_SCORE_DELETE()
+-- 성적 삭제(다시 NULL 값으로) 프로시저 생성 PRC_SCORE_DELETE(수강신청코드, 과목개설코드)
 CREATE OR REPLACE PROCEDURE PRC_SCORE_DELETE
 (   V_REGISTER_CODE IN TBL_REGISTER.REGISTER_CODE%TYPE   -- 수강신청코드
 ,   V_OPENS_CODE    IN TBL_OPENS.OPENS_CODE%TYPE         -- 과목개설코드
@@ -994,7 +1279,7 @@ BEGIN
       AND OPENS_CODE = V_OPENS_CODE; 
     
     -- 커밋
-    -- COMMIT;
+    COMMIT;
 END;
 --==>> Procedure PRC_SCORE_DELETE이(가) 컴파일되었습니다.
 
@@ -1019,11 +1304,14 @@ BEGIN
        ,S_PERCENT = V_S_PERCENT
        ,P_PERCENT = V_P_PERCENT
     WHERE OPENS_CODE =V_OPENS_CODE;
+    
+    --커밋
+    COMMIT;
         
       --예외 처리
-      EXCEPTION
-        WHEN OTHERS 
-            THEN ROLLBACK;
+      --EXCEPTION
+        --WHEN OTHERS 
+            --THEN ROLLBACK;
 END;
 --==>> Procedure PRC_PERCENT_UPDATE이(가) 컴파일되었습니다.
 
@@ -1040,12 +1328,15 @@ BEGIN
     SET C_PERCENT = ''
        ,S_PERCENT = ''
        ,P_PERCENT = ''
-    WHERE OPENS_CODE =V_OPENS_CODE;       
+    WHERE OPENS_CODE =V_OPENS_CODE;      
+    
+    --커밋
+    COMMIT;
 
       --예외 처리
-      EXCEPTION
-        WHEN OTHERS 
-            THEN ROLLBACK;
+      --EXCEPTION
+        --WHEN OTHERS 
+            --THEN ROLLBACK;
 END;
 --==>> Procedure PRC_PERCENT_DELETE이(가) 컴파일되었습니다.
 --------------------------------------------------------------------------------
@@ -1055,6 +1346,7 @@ END;
 -- 수강신청일자는 DEFAULT 값으로..
 -- 수강신청일자(SYSDATE) < 과정시작일자 => 수강신청 VIEW 자체에서 이미 해당 조건으로만 보일 수 있게 설정하면, 
 -- 프로시저에서 거르지않아도 된다고 생각하여, 따로 예외처리 하지 않았음.
+-- 동일한 학생이 같은 과정을 신청할 수 없음. 기간겹치는 과정을 신청할 수 없음.
 CREATE OR REPLACE PROCEDURE PRC_REGISTER_INSERT
 ( V_OPENC_CODE  IN TBL_OPENC.OPENC_CODE%TYPE
 , V_STD_CODE    IN TBL_STUDENT.STD_CODE%TYPE
@@ -1062,57 +1354,131 @@ CREATE OR REPLACE PROCEDURE PRC_REGISTER_INSERT
 IS
     --필요변수선언
     V_REGISTER_CODE TBL_REGISTER.REGISTER_CODE%TYPE;
+    V_OPENC_CODE_TEMP   TBL_OPENC.OPENC_CODE%TYPE;
+    V_CRS_START_TEMP    TBL_OPENC.CRS_START%TYPE;
+    V_CRS_END_TEMP      TBL_OPENC.CRS_END%TYPE;
+    
+    USER_DEFINE_ERROR1 EXCEPTION;       -- 이미 수강신청한 과정입니다.
+    USER_DEFINE_ERROR2 EXCEPTION;       -- 수강중인 과정의 기간과 중복되어 신청할 수 없습니다.
+    
+    CURSOR CUR_REGISTER_CHECK1  -- 1번에러 잡는 CURSOR 커서명
+    IS
+    SELECT OPENC_CODE
+    FROM TBL_REGISTER
+    WHERE STD_CODE = V_STD_CODE;
+    
+    CURSOR CUR_REGISTER_CHECK2  -- 2번에러 잡는 CURSOR 커서명
+    IS
+    SELECT OC.CRS_END
+    FROM TBL_REGISTER RE, TBL_OPENC OC
+    WHERE RE.OPENC_CODE = OC.OPENC_CODE(+)
+      AND STD_CODE = V_STD_CODE;
 BEGIN
     --변수 초기화
     V_REGISTER_CODE := TO_CHAR(SEQ_REGISTER.NEXTVAL);
+    
+    SELECT CRS_START INTO V_CRS_START_TEMP
+    FROM TBL_OPENC
+    WHERE OPENC_CODE = V_OPENC_CODE;
+    
+    --1번에러 잡는 커서 오픈
+    OPEN CUR_REGISTER_CHECK1;
+    LOOP
+        -- 한 행 한 행 끄집어내어 가져오는 행위 → 『FETCH』
+        FETCH CUR_REGISTER_CHECK1 INTO V_OPENC_CODE_TEMP;
+        
+        EXIT WHEN CUR_REGISTER_CHECK1%NOTFOUND; -- 더이상 꺼낼 데이터가 없을 때 반복종료.
+        
+        -- IF문 작동~~!!
+        IF (V_OPENC_CODE_TEMP = V_OPENC_CODE)
+            THEN RAISE USER_DEFINE_ERROR1;
+        END IF;
+        
+    END LOOP;
+    
+    --1번에러 잡는 커서 클로즈
+    CLOSE CUR_REGISTER_CHECK1;
+    
+    --2번에러 잡는 커서 오픈
+    OPEN CUR_REGISTER_CHECK2;
+    LOOP
+        -- 한 행 한 행 끄집어내어 가져오는 행위 → 『FETCH』
+        FETCH CUR_REGISTER_CHECK2 INTO V_CRS_END_TEMP;
+        
+        EXIT WHEN CUR_REGISTER_CHECK2%NOTFOUND; -- 더이상 꺼낼 데이터가 없을 때 반복종료.
+        
+        -- IF문 작동~~!! --선택한 과정의 시작날짜가 기존과정의 종료날짜보다 작거나 같다면 예외처리.
+        IF (V_CRS_START_TEMP <= V_CRS_END_TEMP)
+            THEN RAISE USER_DEFINE_ERROR2;
+        END IF;
+        
+    END LOOP;
+    
+    --2번에러 잡는 커서 클로즈
+    CLOSE CUR_REGISTER_CHECK2;
+    
     
     --INSERT 쿼리문 작성
     INSERT INTO TBL_REGISTER(REGISTER_CODE, OPENC_CODE, STD_CODE)
     VALUES(V_REGISTER_CODE, V_OPENC_CODE, V_STD_CODE);
     
     --커밋
-    --COMMIT;
+    COMMIT;
+    
+    --예외처리
+    EXCEPTION
+        WHEN USER_DEFINE_ERROR1
+            THEN RAISE_APPLICATION_ERROR(-20300, '이미 수강신청한 과정입니다.');
+            ROLLBACK;
+        WHEN USER_DEFINE_ERROR2
+            THEN RAISE_APPLICATION_ERROR(-20005, '수강중인 과정의 기간과 중복되어 신청할 수 없습니다.');
+            ROLLBACK;
+        WHEN OTHERS
+            THEN ROLLBACK;
 
 END;
 --==>>  Procedure PRC_REGISTER_INSERT이(가) 컴파일되었습니다.
 
--- 수강신청 수정 프로시저 생성 PRC_REGISTER_UPDATE(수강신청코드, NEW과정개설코드, NEW학생코드) -- 수강신청코드와 수강신청일자는 변경되지않아야함..
-CREATE OR REPLACE PROCEDURE PRC_REGISTER_UPDATE
-( V_REGISTER_CODE IN TBL_REGISTER.REGISTER_CODE%TYPE
-, V_OPENC_CODE    IN TBL_OPENC.OPENC_CODE%TYPE
-, V_STD_CODE      IN TBL_STUDENT.STD_CODE%TYPE
-)
-IS
-BEGIN
-    --UPDATE 쿼리문 작성
-    UPDATE TBL_REGISTER
-    SET OPENC_CODE = V_OPENC_CODE
-      , STD_CODE = V_STD_CODE
-    WHERE REGISTER_CODE = V_REGISTER_CODE;
-    
-    --커밋
-    --COMMIT;
-
-END;
---==>> Procedure PRC_REGISTER_UPDATE이(가) 컴파일되었습니다.
-
 -- 수강신청 삭제 프로시저 생성 PRC_REGISTER_DELETE(수강신청코드)--**중도탈락기록이 있는 수강신청코드의 경우.. 수강신청삭제 불가.
+-- 수강신청한 과정의 시작일자가 SYSDATE 보다 앞서면(작으면) DELETE 불가.
 CREATE OR REPLACE PROCEDURE PRC_REGISTER_DELETE
 ( V_REGISTER_CODE IN TBL_REGISTER.REGISTER_CODE%TYPE
 )
 IS
+    V_OPENC_CODE    TBL_OPENC.OPENC_CODE%TYPE;
+    V_CRS_START   TBL_OPENC.CRS_START%TYPE;
+    USER_DEFINE_ERROR EXCEPTION;
 BEGIN
+    --삭제할 수강신청코드의 과정개설코드 추출
+    SELECT OPENC_CODE INTO V_OPENC_CODE
+    FROM TBL_REGISTER
+    WHERE REGISTER_CODE = V_REGISTER_CODE;
+    
+    --과정개설코드의 과정시작일자 추출
+    SELECT CRS_START INTO V_CRS_START
+    FROM TBL_OPENC
+    WHERE OPENC_CODE = V_OPENC_CODE;
+    
+    -- 수강신청한 과정의 시작일자가 SYSDATE 보다 작으면..
+    IF (V_CRS_START  < SYSDATE)
+        THEN RAISE USER_DEFINE_ERROR;
+    END IF;
+    
     --DELETE 쿼리문 작성
     DELETE 
     FROM TBL_REGISTER
     WHERE REGISTER_CODE = V_REGISTER_CODE;
     
     --커밋
-    --COMMIT;
+    COMMIT;
     
     --예외처리..
     EXCEPTION
-        WHEN OTHERS THEN ROLLBACK;  
+        WHEN USER_DEFINE_ERROR
+            THEN RAISE_APPLICATION_ERROR(-20004,'이미 수강이 시작된 과정이므로 삭제 불가합니다.');
+                 ROLLBACK;
+        WHEN OTHERS 
+            THEN ROLLBACK;  
 
 END;
 --==>> Procedure PRC_REGISTER_DELETE이(가) 컴파일되었습니다.
@@ -1131,7 +1497,19 @@ CREATE OR REPLACE PROCEDURE PRC_ADMIN_UPDATE
    ,V_NEW_PW   IN TBL_ADMIN.ADMIN_PW%TYPE
 )
 IS
+    V_ADMIN_CODE  TBL_ADMIN.ADMIN_CODE%TYPE;
+    V_ADMIN_PW  TBL_ADMIN.ADMIN_PW%TYPE;
+    
+    USER_DEFINE_ERROR EXCEPTION;
 BEGIN
+    --변수 초기화
+    SELECT ADMIN_CODE,ADMIN_PW INTO V_ADMIN_CODE, V_ADMIN_PW
+    FROM TBL_ADMIN;
+    
+    IF (V_OLD_CODE != V_ADMIN_CODE
+        OR V_OLD_PW != V_ADMIN_PW)
+        THEN RAISE USER_DEFINE_ERROR;
+    END IF;
     
     -- UPDATE 쿼리문
     UPDATE TBL_ADMIN
@@ -1139,11 +1517,14 @@ BEGIN
     WHERE ADMIN_CODE = V_OLD_CODE AND (SELECT ADMIN_PW
                                        FROM TBL_ADMIN
                                        WHERE ADMIN_CODE=V_OLD_CODE)=V_OLD_PW;
+    DBMS_OUTPUT.PUT_LINE('변경사항이 성공적으로 반영되었습니다.');
     -- 커밋
-    -- COMMIT;
+    COMMIT;
     
     --예외 처리
       EXCEPTION
+        WHEN USER_DEFINE_ERROR
+            THEN RAISE_APPLICATION_ERROR(-20101, '기존 아이디와 패스워드가 일치하지 않습니다..');
         WHEN OTHERS 
             THEN ROLLBACK;
     
@@ -1151,8 +1532,7 @@ END;
 --==>> Procedure PRC_ADMIN_UPDATE이(가) 컴파일되었습니다.
 --------------------------------------------------------------------------------
 
-
-
+------------------------------VIEW 생성-----------------------------------------
 
 -- ① 교수자 계정 관리 기능 구현한 뷰 
 -- 교수명, 배정된과목명, 기간, 교재명, 강의실, 강의진행여부 조회 
@@ -1170,11 +1550,8 @@ WHERE TOS.PROF_CODE = TP.PROF_CODE(+)
   AND TOC.CRS_CODE = TC.CRS_CODE(+)
   AND TOS.OPENC_CODE = TOC.OPENC_CODE(+)
   AND TOC.ROOM_CODE = TR.ROOM_CODE(+);
+--==>> View VIEW_PROFESSORS이(가) 생성되었습니다.
   
-SELECT *
-FROM VIEW_PROFESSORS;
---가능
-
 -- ② 관리자 과정 출력 뷰 생성
 -- 과정명, 강의실, 과목명, 과목 기간(시간일, 종료일), 교재명, 교수명
 CREATE OR REPLACE VIEW VIEW_COURSE
@@ -1188,12 +1565,412 @@ WHERE TOS.OPENC_CODE = TOC.OPENC_CODE(+)
   AND TOC.CRS_CODE = TC.CRS_CODE(+)
   AND TOS.BOOK_CODE = TB.BOOK_CODE(+)
   AND TOS.PROF_CODE = TP.PROF_CODE(+);
+--==>> iew VIEW_COURSE이(가) 생성되었습니다.
+  
+--과목 VIEW (과정명, 강의실, 과목명, 과목시작일자, 과목종료일자, 교재명, 교수명)
+CREATE OR REPLACE VIEW VIEW_SUBJECT
+AS
+SELECT C.CRS_NAME "과정명", R.ROOM_NAME"강의실", S.SUB_NAME"과목명"
+     , OS.SUB_START"과목시작일자", OS.SUB_END"과목종료일자", B.BOOK_NAME"교재명", P.PROF_NAME"교수명"
+FROM TBL_OPENS OS, TBL_OPENC OC, TBL_ROOM R, TBL_COURSE C, TBL_SUBJECT S, TBL_BOOK B, TBL_PROFESSOR P
+WHERE OS.OPENC_CODE = OC.OPENC_CODE(+)
+  AND OC.ROOM_CODE = R.ROOM_CODE(+)
+  AND OC.CRS_CODE = C.CRS_CODE(+)
+  AND OS.SUB_CODE = S.SUB_CODE(+)
+  AND OS.BOOK_CODE = B.BOOK_CODE(+)
+  AND OS.PROF_CODE = P.PROF_CODE(+);
+--==>> View VIEW_SUBJECT이(가) 생성되었습니다.
 
-SELECT *
-FROM VIEW_COURSE;
---가능
+--학생 VIEW (학생이름, 과정명, 과목명, 과목총점, 과정수강상태)
+
+CREATE OR REPLACE VIEW VIEW_STUDENT
+AS
+SELECT ST.STD_NAME"학생이름", CO.CRS_NAME"과정명", SU.SUB_NAME"과목명"
+     , (SC.C_SCORE+SC.P_SCORE+SC.S_SCORE)"과목총점", NVL2(FA.REGISTER_CODE,'중도탈락','해당없음')"과정수강상태"
+FROM TBL_REGISTER RE, TBL_STUDENT ST, TBL_OPENC OC, TBL_COURSE CO
+   , TBL_OPENS OS, TBL_SUBJECT SU, TBL_SCORE SC, TBL_FAIL FA
+WHERE RE.STD_CODE = ST.STD_CODE(+)      --수강신청과 학생정보  연결하여 학생이름 추출
+  AND RE.OPENC_CODE = OC.OPENC_CODE(+)  --수강신청과 과정개설과 연결
+  AND OC.CRS_CODE = CO.CRS_CODE(+)      -- 과정개설과 과정정보 연결하여 과정명 추출
+  AND OS.OPENC_CODE = OC.OPENC_CODE     -- 과정개설과 과목개설과 연결
+  AND OS.SUB_CODE = SU.SUB_CODE(+)          -- 과목명 추출
+  AND SC.OPENS_CODE = OS.OPENS_CODE(+)
+  AND SC.REGISTER_CODE = RE.REGISTER_CODE(+)
+  AND FA.REGISTER_CODE(+) = RE.REGISTER_CODE;
+--==>> View VIEW_STUDENT이(가) 생성되었습니다.
+
+--수강신청 VIEW (과정명, 과정시작일자, 과정종료일자)
+CREATE OR REPLACE VIEW VIEW_REGISTER
+AS
+SELECT OC.OPENC_CODE"과정개설코드", C.CRS_NAME"과정명", OC.CRS_START"과정시작일자", OC.CRS_END"과정종료일자"
+FROM TBL_OPENC OC, TBL_COURSE C
+WHERE OC.CRS_CODE = C.CRS_CODE(+)
+  AND CRS_START > SYSDATE;
+--==>> View VIEW_REGISTER이(가) 생성되었습니다.
+
+-- 로그인한 학생이 선택한 과목 출력 뷰 프로시저 생성
+CREATE OR REPLACE PROCEDURE PRC_STUDENT_SUBINFO_VIEW
+(   V_STD_CODE IN TBL_STUDENT.STD_CODE%TYPE   -- 학생코드=로그인ID
+,   V_OPENS_CODE IN TBL_OPENS.OPENS_CODE%TYPE   -- 과목개설코드=학생이 선택한 과목
+)
+IS
+    V_STD_NAME  TBL_STUDENT.STD_NAME%TYPE;     -- 학생명
+    V_CRS_NAME  TBL_COURSE.CRS_NAME%TYPE;      -- 과정명
+    V_SUB_NAME  TBL_SUBJECT.SUB_NAME%TYPE;     -- 과목명
+    V_CRS_START TBL_OPENC.CRS_START%TYPE;      -- 교육시작일자
+    V_CRS_END   TBL_OPENC.CRS_END%TYPE;        -- 교육종료일자
+    -->> 이미 끝난 과목을 클릭했으니까 수강 기간 출력
+    V_BOOK_NAME TBL_BOOK.BOOK_NAME%TYPE;       -- 교재명
+    V_C_SCORE   TBL_SCORE.C_SCORE%TYPE;        -- 출결
+    V_P_SCORE   TBL_SCORE.P_SCORE%TYPE;        -- 필기
+    V_S_SCORE   TBL_SCORE.S_SCORE%TYPE;        -- 실기
+    V_TOTAL     NUMBER(3);                     -- 총점
+    V_RANK      NUMBER(3);                     -- 등수
+    
+    CURSOR CUR_STUDENT_SUBINFO_VIEW
+    IS
+    SELECT T.학생명 "학생명", T.과정명 "과정명", T.과목명 "과목명", T.교육시작일자 "교육시작일자"
+     , T.교육종료일자 "교육종료일자", T.교재명 "교재명", T.출결 "출결", T.실기 "실기", T."필기"
+     , T.총점, DENSE_RANK() OVER(PARTITION BY T.과목개설코드 ORDER BY T.총점 DESC) "등수"
+    FROM       
+    (     
+    SELECT TS.STD_CODE "학생코드", TS.STD_NAME "학생명", TC.CRS_NAME "과정명", TSJ.SUB_CODE "과목코드", TSJ.SUB_NAME "과목명", TOC.CRS_START "교육시작일자"
+         , TOC.CRS_END "교육종료일자", TB.BOOK_NAME "교재명", TSC.C_SCORE "출결", TSC.S_SCORE "실기", TSC.P_SCORE "필기"
+         , (TSC.C_SCORE + TSC.S_SCORE + TSC.P_SCORE) "총점", TSC.OPENS_CODE "과목개설코드"
+    FROM TBL_STUDENT TS LEFT JOIN TBL_REGISTER TR
+    ON TS.STD_CODE = TR.STD_CODE
+       LEFT JOIN TBL_OPENC TOC
+         ON TR.OPENC_CODE = TOC.OPENC_CODE
+            LEFT JOIN TBL_COURSE TC
+            ON TOC.CRS_CODE = TC.CRS_CODE
+               LEFT JOIN TBL_SCORE TSC
+               ON TR.REGISTER_CODE = TSC.REGISTER_CODE
+                  LEFT JOIN TBL_OPENS TOS
+                  ON TSC.OPENS_CODE = TOS.OPENS_CODE
+                     LEFT JOIN TBL_BOOK TB
+                     ON TOS.BOOK_CODE = TB.BOOK_CODE
+                        LEFT JOIN TBL_SUBJECT TSJ
+                        ON TOS.SUB_CODE = TSJ.SUB_CODE
+    )T
+    WHERE T.학생코드 = V_STD_CODE
+      AND T.과목개설코드 = V_OPENS_CODE;
+BEGIN
+    OPEN CUR_STUDENT_SUBINFO_VIEW;
+    
+    LOOP
+    FETCH CUR_STUDENT_SUBINFO_VIEW INTO V_STD_NAME, V_CRS_NAME, V_SUB_NAME, V_CRS_START, V_CRS_END, V_BOOK_NAME, V_C_SCORE, V_P_SCORE, V_S_SCORE, V_TOTAL, V_RANK;
+    EXIT WHEN CUR_STUDENT_SUBINFO_VIEW%NOTFOUND;
+    
+    -- 출력
+    DBMS_OUTPUT.PUT_LINE('이름 : ' || V_STD_NAME || ' | 과정명 : ' || V_CRS_NAME || ' | 과목명 : ' || V_SUB_NAME || ' | 교육일자 : ' 
+                         || V_CRS_START || ' - ' || V_CRS_END || ' | 교재명 : ' || V_BOOK_NAME || ' | 출결 : ' || V_C_SCORE || ' 필기 : ' 
+                         || V_P_SCORE || ' 실기 : ' || V_S_SCORE || ' 총점 : ' || V_TOTAL || ' 등수 : ' || V_RANK);
+    END LOOP;
+    
+    CLOSE CUR_STUDENT_SUBINFO_VIEW;
+END;
+
+-- 로그인한 학생이 자신이 수강 끝낸 과목을 확인할 수 있는 뷰 프로시저 생성
+CREATE OR REPLACE PROCEDURE PRC_STUDENT_SUB_VIEW
+(   V_STD_CODE IN TBL_STUDENT.STD_CODE%TYPE   -- 학생코드=로그인ID
+)
+IS
+
+    V_CRS_NAME   TBL_COURSE.CRS_NAME%TYPE;      -- 과정명
+    V_SUB_NAME   TBL_SUBJECT.SUB_NAME%TYPE;     -- 과목명
+    V_SUB_START  TBL_OPENS.SUB_START%TYPE;      -- 과목시작일자
+    V_SUB_END    TBL_OPENS.SUB_END%TYPE;        -- 과목종료일자
+    V_SUB_STATUS VARCHAR2(50);                   -- 수강상태
+    
+    
+    CURSOR CUR_STUDENT_SUB_VIEW
+    IS
+    SELECT T.과정명 "과정명", T.과목명 "과목명", T.과목시작일자 "과목시작일자", T.과목종료일자 "과목종료일자"
+     , DECODE(T.중도탈락명단확인, NULL, '수강완료', '중도탈락') "수강상태"
+    FROM
+    (
+     SELECT TS.STD_CODE "학생코드", TC.CRS_NAME "과정명", TSJ.SUB_NAME "과목명", TOS.SUB_START "과목시작일자", TOS.SUB_END "과목종료일자", TF.REGISTER_CODE "중도탈락명단확인"
+     FROM TBL_STUDENT TS LEFT JOIN TBL_REGISTER TR
+     ON TS.STD_CODE = TR.STD_CODE
+           LEFT JOIN TBL_OPENC TOC
+             ON TR.OPENC_CODE = TOC.OPENC_CODE
+                LEFT JOIN TBL_COURSE TC
+                ON TOC.CRS_CODE = TC.CRS_CODE
+                      LEFT JOIN TBL_OPENS TOS
+                      ON TOC.OPENC_CODE = TOS.OPENC_CODE
+                            LEFT JOIN TBL_SUBJECT TSJ
+                            ON TOS.SUB_CODE = TSJ.SUB_CODE
+                               LEFT JOIN TBL_FAIL TF
+                               ON TR.REGISTER_CODE = TF.REGISTER_CODE
+    )T
+    WHERE T.학생코드 = V_STD_CODE
+      AND T.과목종료일자 < SYSDATE;
+BEGIN
+    OPEN CUR_STUDENT_SUB_VIEW;
+    
+    LOOP
+    FETCH CUR_STUDENT_SUB_VIEW INTO V_CRS_NAME, V_SUB_NAME, V_SUB_START, V_SUB_END, V_SUB_STATUS;
+    EXIT WHEN CUR_STUDENT_SUB_VIEW%NOTFOUND;
+    
+    -- 출력
+    DBMS_OUTPUT.PUT_LINE('과정명 : ' || V_CRS_NAME || ' | 과목명 : ' || V_SUB_NAME || ' | 과목일자 : ' || V_SUB_START || ' - ' || V_SUB_END || ' 수강상태 : ' || V_SUB_STATUS);
+    END LOOP;
+    
+    CLOSE CUR_STUDENT_SUB_VIEW;
+END;
+
+-- 교수의 성적 전체 출력 뷰 프로시저 생성
+
+CREATE OR REPLACE PROCEDURE PRC_PROFESSOR_SCOREINFO_VIEW
+( V_PROF_CODE IN TBL_PROFESSOR.PROF_CODE%TYPE ) -- 교수코드
+IS
+    V_OPENS_CODE TBL_OPENS.OPENS_CODE%TYPE;
+    V_SUB_NAME  TBL_SUBJECT.SUB_NAME%TYPE;      -- 과정명
+    V_SUB_START TBL_OPENS.SUB_START%TYPE;       -- 과목시작일
+    V_SUB_END   TBL_OPENS.SUB_END%TYPE;         -- 과목종료일
+    V_BOOK_NAME TBL_BOOK.BOOK_NAME%TYPE;        -- 교재이름
+    V_STD_NAME  TBL_STUDENT.STD_NAME%TYPE;      -- 학생이름
+    V_C_SCORE   TBL_SCORE.C_SCORE%TYPE;         -- 출결
+    V_S_SCORE   TBL_SCORE.S_SCORE%TYPE;         -- 실기
+    V_P_SCORE   TBL_SCORE.P_SCORE%TYPE;         -- 필기
+    V_TOTAL     NUMBER;                         -- 총점
+    V_RANK      NUMBER;                         -- 등수
+    V_STATUS    VARCHAR2(50);                   -- 수강상태
+    
+    CURSOR CUR_PROFESSOR_SCOREINFO_VIEW
+    IS
+    SELECT T.과목개설코드, T.과목명, T.과목시작일자, T.과목종료일자, T.교재명, T.학생이름
+         , T.출결, T.실기, T.필기, T.출결 +  T.실기 + T.필기 "총점"
+         , RANK() OVER(PARTITION BY T.과목개설코드 ORDER BY (T.출결 + T.실기 + T.필기) DESC)
+         , DECODE(T.중도탈락명단확인, NULL, '수강완료', '중도탈락') "수강상태" 
+    FROM 
+    (
+        SELECT O.OPENS_CODE "과목개설코드", SUB.SUB_NAME "과목명", O.SUB_START "과목시작일자", O.SUB_END "과목종료일자"
+             , B.BOOK_NAME "교재명" 
+             , ST.STD_NAME "학생이름", NVL(SC.C_SCORE, 0) "출결", NVL(SC.S_SCORE, 0) "실기", NVL(SC.P_SCORE, 0) "필기"
+             , F.REGISTER_CODE "중도탈락명단확인"
+        FROM TBL_OPENS O LEFT JOIN TBL_SUBJECT SUB
+        ON O.SUB_CODE = SUB.SUB_CODE
+            LEFT JOIN TBL_PROFESSOR P
+            ON O.PROF_CODE = P.PROF_CODE
+                LEFT JOIN TBL_BOOK B
+                ON O.BOOK_CODE = B.BOOK_CODE
+                    LEFT JOIN TBL_SCORE SC
+                    ON O.OPENS_CODE = SC.OPENS_CODE
+                        LEFT JOIN TBL_REGISTER R
+                        ON SC.REGISTER_CODE = R.REGISTER_CODE
+                            LEFT JOIN TBL_FAIL F
+                                ON R.REGISTER_CODE = F.REGISTER_CODE
+                                    LEFT JOIN TBL_STUDENT ST
+                                    ON R.STD_CODE = ST.STD_CODE                                
+        WHERE O.PROF_CODE = V_PROF_CODE AND O.SUB_END <= SYSDATE 
+    ) T;   
+BEGIN
+    -- 커서 오픈
+    OPEN CUR_PROFESSOR_SCOREINFO_VIEW;
+    
+    LOOP
+        FETCH CUR_PROFESSOR_SCOREINFO_VIEW INTO V_OPENS_CODE, V_SUB_NAME, V_SUB_START, V_SUB_END, V_BOOK_NAME, V_STD_NAME
+            , V_C_SCORE, V_S_SCORE, V_P_SCORE, V_TOTAL, V_RANK, V_STATUS;
+
+        EXIT WHEN CUR_PROFESSOR_SCOREINFO_VIEW%NOTFOUND;
+        
+        DBMS_OUTPUT.PUT_LINE('과목명 : ' || V_SUB_NAME || '|' ||  ' 과목기간 : ' || V_SUB_START || '|' || ' - ' || V_SUB_END
+                         || '|' || ' 교재명 : ' || V_BOOK_NAME || '|' || ' 학생 이름 : ' || V_STD_NAME
+                         || '|' || ' 출결 : ' || V_C_SCORE || '|' || ' 필기 : ' || V_P_SCORE || '|' || ' 실기 : ' || V_S_SCORE
+                         || '|' || ' 총점 : ' || V_TOTAL || '|' || ' 등수 : ' || V_RANK || '|' || ' 수강상태 : ' || V_STATUS);        
+    END LOOP;
+END;
 
 
+--==>> Procedure PRC_PROFESSOR_SCOREINFO_VIEW이(가) 컴파일되었습니다.
+
+-- 교수의 로그인 이후 자신이강의한 과목출력 뷰 프로시저 생성
+CREATE OR REPLACE PROCEDURE PRC_PROF_SUBJECT_VIEW
+(
+    V_PROF_CODE      IN TBL_PROFESSOR.PROF_CODE%TYPE
+)
+IS
+    V_PROF_NAME       TBL_PROFESSOR.PROF_NAME%TYPE;    --이름
+    V_SUB_NAME        TBL_SUBJECT.SUB_NAME%TYPE;      --과목
+    V_SUB_START       TBL_OPENS.SUB_START%TYPE;       --시작일
+    V_SUB_END         TBL_OPENS.SUB_END%TYPE;         --종료일
+    V_BOOK_NAME       TBL_BOOK.BOOK_NAME%TYPE;        --교재명
+
+
+    CURSOR CUR_PRO_VIEW_SELECT
+    IS
+    SELECT T.교수이름, T.과목명, T.시작일, T.종료일, T.교재명 
+    FROM(
+    SELECT PR.PROF_CODE"교수코드", PR.PROF_NAME "교수이름", SU.SUB_NAME "과목명", OS.SUB_START"시작일", OS.SUB_END"종료일", BO.BOOK_NAME"교재명"
+    FROM TBL_PROFESSOR PR LEFT JOIN TBL_OPENS OS
+    ON PR.PROF_CODE = OS.PROF_CODE
+        LEFT JOIN TBL_BOOK BO
+        ON OS.BOOK_CODE=BO.BOOK_CODE
+            LEFT JOIN TBL_SUBJECT SU
+            ON OS.SUB_CODE=SU.SUB_CODE
+                LEFT JOIN TBL_OPENC OC
+                ON OS.OPENC_CODE= OC.OPENC_CODE)T   
+    WHERE T.교수코드 = V_PROF_CODE
+        AND T.종료일 < SYSDATE;
+ 
+ BEGIN
+ 
+    OPEN CUR_PRO_VIEW_SELECT;
+ 
+    LOOP
+    FETCH CUR_PRO_VIEW_SELECT INTO V_PROF_NAME, V_SUB_NAME, V_SUB_START, V_SUB_END, V_BOOK_NAME;
+    EXIT WHEN CUR_PRO_VIEW_SELECT%NOTFOUND;
+        -- 출력
+        DBMS_OUTPUT.PUT_LINE(V_PROF_NAME || ' , ' || V_SUB_NAME || ' , ' || V_SUB_START || ' , ' || V_SUB_END || ' , ' ||  V_BOOK_NAME );                                                             
+    END LOOP;
+    
+    CLOSE CUR_PRO_VIEW_SELECT;
+END;
+--==>> Procedure PRC_PROF_SUBJECT_VIEW이(가) 컴파일되었습니다.
+
+--교수 성적 입력 전 뷰프로시저
+CREATE OR REPLACE PROCEDURE PRC_PROFESSOR_SCORE_VIEW
+(   V_PROF_CODE  IN TBL_PROFESSOR.PROF_CODE%TYPE
+,   V_OPENS_CODE IN TBL_SCORE.OPENS_CODE%TYPE
+)
+IS
+    V_SUB_NAME  TBL_SUBJECT.SUB_NAME%TYPE;  --과목명
+    V_SUB_START TBL_OPENS.SUB_START%TYPE;   --시작일
+    V_SUB_END   TBL_OPENS.SUB_END%TYPE;     --종료일
+    V_STD_NAME  TBL_STUDENT.STD_NAME%TYPE;  -- 학생이름
+    V_C_SCORE   TBL_SCORE.C_SCORE%TYPE;     -- 출결
+    V_S_SCORE   TBL_SCORE.S_SCORE%TYPE;     -- 실기
+    V_P_SCORE   TBL_SCORE.P_SCORE%TYPE;     -- 필기
+    V_SUB_STATUS VARCHAR2(50);              -- 수강상태
+    
+    CURSOR CUR_PROF_SCORE_VIEW
+    IS
+    SELECT T.과목명, T.과목시작일, T.과목종료일, T.학생이름, T.출결, T.실기, T.필기
+     , DECODE(T.중도탈락명단확인, NULL, '수강완료', '중도탈락') "과정수강상태"
+    FROM
+    (
+    SELECT TOS.OPENS_CODE "과목개설코드", TOS.PROF_CODE "교수코드", TSJ.SUB_NAME "과목명", TOS.SUB_START "과목시작일", TOS.SUB_END "과목종료일"
+         , TSU.STD_NAME "학생이름", TS.C_SCORE "출결", TS.S_SCORE "실기", TS.P_SCORE "필기",  TF.REGISTER_CODE "중도탈락명단확인"
+    FROM TBL_OPENS TOS LEFT JOIN TBL_SUBJECT TSJ
+    ON TOS.SUB_CODE = TSJ.SUB_CODE
+       LEFT JOIN TBL_SCORE TS
+       ON TOS.OPENS_CODE = TS.OPENS_CODE
+          LEFT JOIN TBL_REGISTER TR
+          ON TS.REGISTER_CODE = TR.REGISTER_CODE
+             LEFT JOIN TBL_STUDENT TSU
+             ON TR.STD_CODE = TSU.STD_CODE
+                LEFT JOIN TBL_FAIL TF
+                ON TR.REGISTER_CODE = TF.REGISTER_CODE
+    )T
+    WHERE T.교수코드 = V_PROF_CODE
+      AND T.과목개설코드 = V_OPENS_CODE
+      AND DECODE(T.중도탈락명단확인, NULL, '수강완료', '중도탈락')='수강완료';
+      
+BEGIN
+    OPEN CUR_PROF_SCORE_VIEW;
+
+    LOOP
+    FETCH CUR_PROF_SCORE_VIEW INTO V_SUB_NAME, V_SUB_START, V_SUB_END, V_STD_NAME, V_C_SCORE, V_S_SCORE, V_P_SCORE, V_SUB_STATUS;
+    EXIT WHEN CUR_PROF_SCORE_VIEW%NOTFOUND;
+    
+    -- 출력
+    DBMS_OUTPUT.PUT_LINE('과목명 : ' || V_SUB_NAME || ' | 과목기간 : ' 
+                         || V_SUB_START || ' - ' || V_SUB_END || ' | 학생명 : ' || V_STD_NAME || ' | 출결 : ' || V_C_SCORE || ' 필기 : ' 
+                         || V_P_SCORE || ' 실기 : ' || V_S_SCORE || ' 수강상태 : ' || V_SUB_STATUS);
+    END LOOP;
+    
+    CLOSE CUR_PROF_SCORE_VIEW;
+END;
+--==>> Procedure PRC_PROF_SCORE_VIEW이(가) 컴파일되었습니다.
+
+-- 관리자측 성적 관리 뷰 
+CREATE OR REPLACE VIEW VIEW_ADMIN_SCOREINFO
+AS
+SELECT T.과목개설코드 "과목개설코드", T.과목명 "과목명", T.과목시작일자 "과목시작일자", T.과목종료일자 "과목종료일자", T.교재명 "교재명" , T.학생이름
+"학생이름"
+         , T.출결, T.실기, T.필기, T.출결 +  T.실기 + T.필기 "총점"
+         , RANK() OVER(PARTITION BY T.과목개설코드 ORDER BY (T.출결 + T.실기 + T.필기) DESC) "등수"
+         , DECODE(T.중도탈락명단확인, NULL, '해당없음', '중도탈락') "과정중도탈락여부" 
+    FROM 
+    (
+        SELECT O.OPENS_CODE "과목개설코드", SUB.SUB_NAME "과목명", O.SUB_START "과목시작일자", O.SUB_END "과목종료일자"
+             , B.BOOK_NAME "교재명" 
+             , ST.STD_NAME "학생이름", NVL(SC.C_SCORE, 0) "출결", NVL(SC.S_SCORE, 0) "실기", NVL(SC.P_SCORE, 0) "필기"
+             , F.REGISTER_CODE "중도탈락명단확인"
+        FROM TBL_OPENS O LEFT JOIN TBL_SUBJECT SUB
+        ON O.SUB_CODE = SUB.SUB_CODE
+            LEFT JOIN TBL_PROFESSOR P
+            ON O.PROF_CODE = P.PROF_CODE
+                LEFT JOIN TBL_BOOK B
+                ON O.BOOK_CODE = B.BOOK_CODE
+                    LEFT JOIN TBL_SCORE SC
+                    ON O.OPENS_CODE = SC.OPENS_CODE
+                        LEFT JOIN TBL_REGISTER R
+                        ON SC.REGISTER_CODE = R.REGISTER_CODE
+                            LEFT JOIN TBL_FAIL F
+                                ON R.REGISTER_CODE = F.REGISTER_CODE
+                                    LEFT JOIN TBL_STUDENT ST
+                                    ON R.STD_CODE = ST.STD_CODE) T;
+                                    
+--==>> View VIEW_ADMIN_SCOREINFO이(가) 생성되었습니다.
+-----------------------------트리거 생성-----------------------------------------
+
+--수강신청 INSERT(수강신청코드, 과정개설코드, 학생코드, 수강신청일자) 발생하면 해당 수강신청 코드와 해당하는 과목개설코드가 성적 테이블에 업데이트되어야 함 
+CREATE OR REPLACE TRIGGER TRG_INSERT_SCORE
+        AFTER
+        INSERT ON TBL_REGISTER
+        FOR EACH ROW
+DECLARE
+    
+    V_OPENS_CODE    TBL_OPENS.OPENS_CODE%TYPE;          --과목코드 담아둘변수
+
+    --커서에 집어넣을내용
+    CURSOR CUR_INSERT_SCORE
+    IS
+    SELECT OPENS_CODE
+    FROM TBL_OPENS
+    WHERE OPENC_CODE =:NEW.OPENC_CODE;
+
+BEGIN 
+    --커서오픈
+    OPEN CUR_INSERT_SCORE;
+    
+    -- 커서 오픈 시 쏟아져 나오는 데이터들 처리(잡아내기)
+    LOOP
+        -- 한 행 한 행 끄집어내어 가져오는 행위 → 『FETCH』
+        FETCH CUR_INSERT_SCORE INTO V_OPENS_CODE;
+        
+        EXIT WHEN CUR_INSERT_SCORE%NOTFOUND; -- 더이상 꺼낼 데이터가 없을 때 반복종료.
+        
+        -- 행삽입
+        INSERT INTO TBL_SCORE(REGISTER_CODE, OPENS_CODE)
+        VALUES(:NEW.REGISTER_CODE, V_OPENS_CODE);          -- 현재 INSERT 된 TBL_REGISTER의 REGISTER CODE, 수강신청한 과정의 과목
+
+    END LOOP;
+    
+    -- 커서 클로즈
+    CLOSE CUR_INSERT_SCORE;
+
+END;
+--==>> Trigger TRG_INSERT_SCORE이(가) 컴파일되었습니다.
+
+--수강신청 DELETE 시 성적에 들어있는 정보 삭제 트리거
+CREATE OR REPLACE TRIGGER TRG_DELETE_SCORE
+        BEFORE
+        DELETE ON TBL_REGISTER
+        FOR EACH ROW
+DECLARE
+BEGIN
+    IF (DELETING)
+        THEN DELETE
+             FROM TBL_SCORE
+             WHERE REGISTER_CODE = :OLD.REGISTER_CODE;
+    END IF;
+
+END;
+--==>> Trigger TRG_DELETE_SCORE이(가) 컴파일되었습니다.
+--------------------------------------------------------------------------------
 
 
 
